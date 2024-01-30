@@ -1,0 +1,216 @@
+#!/bin/bash
+#Made by JayCruz145
+#Make it your own, customize it, make it better, ???, profit.
+
+# Initialize variables
+green_checks=0  # Count of successful checks
+total_checks=0  # Total number of checks
+
+# Retrieve the serial number
+serial=$(system_profiler SPHardwareDataType | awk '/Serial/ {print $4}')
+
+# Retrieve the model
+model=$(system_profiler SPHardwareDataType | awk '/Model Name/ {print $3 " " $4 " " $5}' | sed 's/.$//')
+
+# Retrieve the chip or processor name
+chip=$(system_profiler SPHardwareDataType | awk '/Chip/ {print $2 " " $3}')
+if [ -z "$chip" ]; then
+    chip=$(system_profiler SPHardwareDataType | awk '/Processor Name/ {print $3 " " $4}')
+fi
+
+# Retrieve the hostname
+hostname=$(hostname)
+
+# Retrieve the battery health
+battery_health=$(system_profiler SPPowerDataType | awk -F': ' '/Condition/{print $2}')
+
+# Check if Okta Verify is installed
+if [ -d "/Applications/Okta Verify.app" ]; then
+    okta_status=" ✅ Okta Verify: Installed"
+    green_checks=$((green_checks + 1))
+    total_checks=$((total_checks + 1))
+else
+    okta_status=" ❌  Okta Verify: Not Installed. Please install **Okta Verify** from _Self Service_ and set up."
+    total_checks=$((total_checks + 1))
+fi
+
+# Check if FileVault is enabled
+filevault_status=$(fdesetup status | grep "FileVault is On" | wc -l)
+if [ $filevault_status -eq 1 ]; then
+    filevault_status=" ✅ FileVault: Enabled"
+    green_checks=$((green_checks + 1))
+    total_checks=$((total_checks + 1))
+else
+    filevault_status=" ❌ FileVault: Not Enabled! Please run the **Filevault Encryption** tool from _Self Service_ and restart your computer."
+    total_checks=$((total_checks + 1))
+fi
+
+# Check if the OS is updated
+rss_content=$(curl -sS "https://developer.apple.com/news/releases/rss/releases.rss")
+latest_os_version=$(echo "$rss_content" | grep -o '<title>macOS [0-9]\+[^<]*' | grep -v 'beta' | head -n1 | awk -F ' ' '{print $2}')
+os_version=$(sw_vers -productVersion)
+if [[ "$os_version" == *Beta* ]]; then
+    os_status=" ✅ macOS: Beta version detected! Godspeed! $os_version"
+elif [[ "$latest_os_version" == "$os_version" ]]; then
+    os_status=" ✅ macOS: Up to date with version $os_version"
+    green_checks=$((green_checks + 1))
+    total_checks=$((total_checks + 1))
+else
+    os_status=" ❌ macOS: Outdated. Please update to version $latest_os_version"
+    total_checks=$((total_checks + 1))
+fi
+
+# Check if Chrome is up to date
+chrome_version=$(defaults read /Applications/Google\ Chrome.app/Contents/Info.plist CFBundleShortVersionString)
+latest_chrome_version=$(curl -s "https://chromiumdash.appspot.com/fetch_releases?channel=Stable&platform=Mac&num=1" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
+
+if [ "$chrome_version" = "$latest_chrome_version" ]; then
+    chrome_status=" ✅ Chrome: Updated"  # Indicates Chrome is up to date
+    green_checks=$((green_checks + 1))
+    total_checks=$((total_checks + 1))
+else
+    chrome_status=" ❌ Chrome: Not updated. Latest version available is $latest_chrome_version. Please navigate to the **Chrome** > **About Google Chrome** menu option."  # Indicates Chrome is not up to date and provides instructions to update
+    total_checks=$((total_checks + 1))
+fi
+
+# Check if Slack is up to date. If it's App Store version, checks to make sure its up to date, if it's not App Store version, checks against Slack website.
+slack_app="/Applications/Slack.app"
+if [ "$(mdls -name kMDItemAppStoreHasReceipt $slack_app)" = "kMDItemAppStoreHasReceipt = 1" ]; then
+    app_store_url="https://apps.apple.com/us/app/slack-for-desktop/id803453959"
+    app_store_version=$(curl -s $app_store_url | grep -Eo 'Version [0-9]+.[0-9]+.[0-9]+' | cut -d ' ' -f2)
+    if [ "$app_store_version" != "" ]; then
+        slack_version="$app_store_version (App Store version, always updated)"
+        slack_status=" ✅ Slack: Updated (App Store)"  # Indicates Slack is up to date, and it's from the App Store
+        green_checks=$((green_checks + 1))
+        total_checks=$((total_checks + 1))
+    else
+        slack_version=$(defaults read $slack_app/Contents/Info.plist CFBundleShortVersionString)
+        latest_slack_version=$(curl -fsIL "https://slack.com/ssb/download-osx-universal" | grep -i "^location" | cut -d "/" -f6)
+        if [ "$slack_version" = "$latest_slack_version" ]; then
+            slack_status=" ✅ Slack: Updated"  # Indicates Slack is up to date
+            green_checks=$((green_checks + 1))
+            total_checks=$((total_checks + 1))
+        else
+            slack_status=" ❌ Slack: Not updated. Please click **Apple Menu > App Store > Updates** to update Slack."  # Indicates Slack is not up to date and provides instructions to update
+            total_checks=$((total_checks + 1))
+        fi
+    fi
+else
+    slack_version=$(defaults read $slack_app/Contents/Info.plist CFBundleShortVersionString)
+    latest_slack_version=$(curl -fsIL "https://slack.com/ssb/download-osx-universal" | grep -i "^location" | cut -d "/" -f6)
+    if [ "$slack_version" = "$latest_slack_version" ]; then
+        slack_status=" ✅ Slack: Updated"  # Indicates Slack is up to date
+        green_checks=$((green_checks + 1))
+        total_checks=$((total_checks + 1))
+    else
+        slack_status=" ❌ Slack: Not updated. Please navigate to the Slack > Check for Updates menu option. Once the update is downloaded, select Slack > Restart to Apply Update menu option."  # Indicates Slack is not up to date and provides instructions to update
+        total_checks=$((total_checks + 1))
+    fi
+fi
+
+# Check if Zoom is up to date
+zoom_version=$(defaults read /Applications/zoom.us.app/Contents/Info.plist CFBundleShortVersionString)
+latest_zoomversion=$(curl -fsIL https://zoom.us/client/latest/ZoomInstallerIT.pkg | grep -i ^location | cut -d "/" -f5 | sed -E 's/([0-9]+\.[0-9]+\.[0-9]+)\.([0-9]+)/\1 (\2)/')
+if [ "$zoom_version" = "$latest_zoomversion" ]; then
+    zoom_status=" ✅ Zoom: Updated"  # Indicates Zoom is up to date
+    green_checks=$((green_checks + 1))
+    total_checks=$((total_checks + 1))
+else
+    zoom_status=" ❌ Zoom: Not updated. Your version: $zoom_version Latest: $latest_zoomversion Please navigate to **zoom.us** > **Check for Updates** menu option."  # Indicates Zoom is not up to date and provides instructions to update
+    total_checks=$((total_checks + 1))
+fi
+
+# Check if Crowdstrike agent is running
+cs_version=$(defaults read /Applications/Falcon.app/Contents/Info.plist CFBundleShortVersionString)
+if pgrep -x "com.crowdstrike.falcon.Agent" >/dev/null; then
+    cs_status=" ✅ Crowdstrike Agent is running"  # Indicates Crowdstrike Agent is running
+    green_checks=$((green_checks + 1))
+    total_checks=$((total_checks + 1))
+else
+    cs_status=" ❌ Crowdstrike Agent is not running. Please contact IT support for assistance."  # Indicates Crowdstrike Agent is not running
+    total_checks=$((total_checks + 1))
+fi
+
+if [ -d "/Applications/Twingate.app" ]; then
+    twingate_version=$(defaults read /Applications/Twingate.app/Contents/Info.plist CFBundleShortVersionString)
+    latest_twingateversion=$(curl -s https://www.twingate.com/changelog/clients#macos | grep -oE 'macos-[0-9]+\-[0-9]+(-[0-9]+)?-release' | cut -d "-" -f 2- | tr - . | sed 's/\.release//' | head -n 1)
+    if [ "$twingate_version" = "$latest_twingateversion" ]; then
+        twingate_status=" ✅ Twingate: Updated"  # Indicates Twingate is up to date
+        green_checks=$((green_checks + 1))
+        total_checks=$((total_checks + 1))
+    else
+        twingate_status=" ❌ Twingate: Not updated. Please quit Twingate from your menu bar and relaunch application."  # Indicates Twingate is not up to date
+        total_checks=$((total_checks + 1))
+    fi
+else
+    twingate_status=" ❌ Twingate: Not installed. Please install Twingate from _Self Service_ in your **Applications** folder."  # Indicates Twingate is not installed
+    total_checks=$((total_checks + 1))
+fi
+
+# Check if computer has been restarted within the last 12 days
+if [ $(($(date +%s) - $(sysctl -n kern.boottime | awk '{print $4}' | sed 's/,//'))) -lt 1036800 ]; then
+    reboot_status=" ✅ Computer recently restarted"  # Indicates computer was recently restarted
+    green_checks=$((green_checks + 1))
+    total_checks=$((total_checks + 1))
+else
+    reboot_status=" ⚠️ Computer restart more than 12 days ago. Please consider restarting your computer"  # Indicates computer restart is overdue
+    total_checks=$((total_checks + 1))
+fi
+
+# Calculate the used percentage using the provided command
+used_percent=$(df /System/Volumes/Data | awk '(NR==2){ print $5 }')
+
+# Set the storage status based on the percentage
+if (( $used_percent >= 90 )); then
+    storage_status=" ❌ Your hard drive is $used_percent percent full. Please remove unneeded files now to prevent your machine from experiencing potential issues."  # Indicates high storage usage and provides recommendation
+    total_checks=$((total_checks + 1))
+elif (( $used_percent >= 75 )); then
+    storage_status="⚠️ Your hard drive is $used_percent percent full. You may want to clear unneeded data files from your machine soon."  # Indicates moderate storage usage
+    total_checks=$((total_checks + 1))
+else
+    storage_status=" ✅ Your hard drive is $used_percent percent full."  # Indicates low storage usage
+    green_checks=$((green_checks + 1))
+    total_checks=$((total_checks + 1))
+fi
+
+# Check if Tenable Nessus agent is running and up to date
+nessus_version=$(sudo /Library/NessusAgent/run/sbin/nessuscli -v | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+latestnessus_version=$(curl -s https://www.tenable.com/downloads/nessus-agents?loginAttempted=true | grep -oE 'Nessus Agents - [0-9]+\.[0-9]+\.[0-9]+' | head -1 | sed 's/Nessus Agents - //')
+if pgrep -x "nessusd" >/dev/null && [[ "$latestnessus_version" == "$nessus_version" ]]; then
+    nessus_status=" ✅ Nessus Agent is running and updated."  # Indicates Nessus Agent is running and up to date
+    green_checks=$((green_checks + 1))
+    total_checks=$((total_checks + 1))
+elif pgrep -x "nessusd" >/dev/null; then
+    nessus_status=" ❌ Nessus Agent is running, but is not updated. Please contact IT support for assistance."  # Indicates Nessus Agent is running but not up to date
+    total_checks=$((total_checks + 1))
+else
+    nessus_status=" ❌ Nessus Agent is not installed. please contact IT support for assistance."  # Indicates Nessus Agent is not installed
+    total_checks=$((total_checks + 1))
+fi
+
+# Calculate the percentage of checks that passed
+if [ $total_checks -eq 0 ]; then
+    percent_passed=0
+else
+    percent_passed=$((green_checks * 100 / total_checks))
+fi
+
+# Determine the appropriate rating based on the percentage of checks that passed
+if [ $percent_passed -lt 70 ]; then
+    grade="F - Please contact IT support ASAP"  # Indicates overall health rating of F
+elif [ $percent_passed -lt 80 ]; then
+    grade="C"  # Indicates overall health rating of C
+elif [ $percent_passed -lt 90 ]; then
+    grade="B"  # Indicates overall health rating of B
+elif [ $percent_passed -lt 100 ]; then
+    grade="A"  # Indicates overall health rating of A
+else
+    grade="A+ (Great Job!)"  # Indicates overall health rating of A+
+fi
+
+# Display the output in a dialog box
+PNG_URL="https://mediacenter.companyname.com/img/media/123.png"
+DEST_DIR="/private/tmp"
+curl -o "$DEST_DIR/yourcompanyimage.png" "$PNG_URL"  # Download company image
+
+dialog --width "680" --height "700" --moveable --ontop --position "centre" --title "Compliance and Health Results" --icon /private/tmp/yourcompanyimage.png --infobuttontext "IT Helpdesk Portal" --infobuttonaction "https://yourcompany.atlassian.net/servicedesk" --infobox "### _________________ ###\n\n### IT SUPPORT ###\n\n To request IT support, \n please send an email to \n it-help@yourcompany.com \n or visit #it-help in Slack \n\nClick the question mark icon for more information." --message "$okta_status \n\n$filevault_status \n\n$os_status \n\n$chrome_status \n\n$slack_status \n\n$twingate_status \n\n$zoom_status \n\n$cs_status \n\n$nessus_status \n\n$reboot_status \n\n$storage_status \n\n _________________ \n **Overall Computer Health: $grade**" --helpmessage "Your installed versions: \n\nmacOS: $os_version\n\nChrome: $chrome_version\n\nSlack: $slack_version\n\nTwingate: $twingate_version \n\nZoom: $zoom_version\n\nCrowdstrike: $cs_version\n\nNessus: $nessus_version \n ______________________ \n\n Computer Name: $hostname \n\n Model: $model ($chip) \n\n Serial: $serial \n\n Battery Health: $battery_health"  # Display dialog box with compliance and health results
