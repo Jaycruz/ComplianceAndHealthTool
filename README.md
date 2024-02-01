@@ -3,7 +3,7 @@
 
 
 This tool is a modification from another Github/MacAdmin members swiftDialog code, with some modifications that include a scoring health system. 
-Simple, effective and easy for your users to use and report to their IT team. You could modify the button to include information from this application when creating a ticket if you wanted to get that nitty gritty on it. 
+Simple, effective and easy for your users to use and report to their IT team. Your company logo will appear in the top left corner. You could modify the lower left corner button to include information from this application when creating a ticket if you wanted to get that nitty gritty on it. 
 
 You do need to install swiftDialog from here: https://swiftdialog.app/ to get this to work. 
 Easy to deploy this to machines using JAMF, but you can have users install this directly too if you prefer. 
